@@ -1,6 +1,5 @@
-hidapi==0.11.2
 paho-mqtt==1.6.1
-python-dali==0.9
+git+https://github.com/mrk-its/python-dali.git@misc#egg=python-dali
 python-slugify==6.1.1
 pyusb==1.2.1
 PyYAML==6.0
