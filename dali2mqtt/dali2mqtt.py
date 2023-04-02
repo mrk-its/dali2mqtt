@@ -159,7 +159,7 @@ def initialize_lamps(data_object, client):
                 ),
                 (
                     MQTT_BRIGHTNESS_STATE_TOPIC.format(mqtt_base_topic, name),
-                    lamp_object.level,
+                    scale_dali_to_mqtt(lamp_object),
                     False,
                 ),
                 (
@@ -262,6 +262,21 @@ def get_lamp_object(data_object, light):
     return lamp_object
 
 
+def linear_scale(value, min_value, max_value, min_dest, max_dest):
+    dest = min_dest + (max_dest - min_dest) * (value - min_value) / (max_value - min_value)
+    return min(max_dest, max(min_dest, round(dest)))
+
+
+def scale_dali_to_mqtt(lamp_object):
+    return linear_scale(lamp_object.level, lamp_object.min_level, lamp_object.max_level, 0, 255)
+
+
+def scale_mqtt_to_dali(value, lamp_object):
+    level = linear_scale(value, 0, 255, lamp_object.min_level, lamp_object.max_level)
+    lamp_object.level = level
+    return level
+
+
 def on_message_brightness_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT brightness command message."""
     logger.debug("Brightness Command on %s: %s", msg.topic, msg.payload)
@@ -273,20 +288,16 @@ def on_message_brightness_cmd(mqtt_client, data_object, msg):
         lamp_object = get_lamp_object(data_object, light)
 
         try:
-            lamp_object.level = int(msg.payload.decode("utf-8"))
-            if lamp_object.level == 0:
-                # 0 in DALI is turn off with fade out
-                lamp_object.off()
-                logger.debug("Set light <%s> to OFF", light)
-
+            mqtt_level = int(msg.payload.decode("utf-8"))
+            scale_mqtt_to_dali(mqtt_level, lamp_object)
             mqtt_client.publish(
                 MQTT_STATE_TOPIC.format(data_object["base_topic"], light),
-                MQTT_PAYLOAD_ON if lamp_object.level != 0 else MQTT_PAYLOAD_OFF,
+                MQTT_PAYLOAD_ON,
                 retain=False,
             )
             mqtt_client.publish(
                 MQTT_BRIGHTNESS_STATE_TOPIC.format(data_object["base_topic"], light),
-                lamp_object.level,
+                mqtt_level,
                 retain=True,
             )
         except ValueError as err:
@@ -317,7 +328,7 @@ def on_message_brightness_get_cmd(mqtt_client, data_object, msg):
 
             mqtt_client.publish(
                 MQTT_BRIGHTNESS_STATE_TOPIC.format(data_object["base_topic"], light),
-                lamp_object.level,
+                scale_dali_to_mqtt(lamp_object),
                 retain=False,
             )
 
